@@ -53,3 +53,6 @@ dkms.conf
 
 # Xcode
 *.xcodeproj/*
+
+# Compiled programs
+bin/*
