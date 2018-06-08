@@ -21,8 +21,6 @@
 #define IMAX_BITS(m) ((m) /((m)%0x3fffffffL+1) /0x3fffffffL %0x3fffffffL *30 \
 + (m)%0x3fffffffL /((m)%31+1)/31%31*5 + 4-12/((m)%31+3))
 
-#undef DEBUG
-
 //Function declarations
 void printBits(size_t const size, void const * const ptr);
 int countsetbits(unsigned long long v);
@@ -35,9 +33,14 @@ int main(int argc, const char * argv[]) {
     const int WBITS=IMAX_BITS(ULONG_LONG_MAX);
 
     //Conf variables
+#ifdef DEBUG
+    long MAX_IT=4000000;
+    printf("\n\nWARNING: This is the debug version of combdepth. The maximum number of iteractions has been reduced to %ld, the output will be more verbose than needed for regular use and some other undesired behaviours may happen. Please, use the release version of this program.\n\n",MAX_IT);
+    const char usage[542]="Usage: combdepth (-f|--ref reference_genome.fa | -d|--dict reference_genome.dict | -c|--list chrlist.tsv) -o|--output outputfile [options] inputsample1.tsv [inputsample2.tsv ... inputtsamplen.tsv]\n\nOptions: \n\t-l|--min min \n\t-r|--max max \n\t-b|--by by\n\t-c|--list list of chromosmes sorted in the same order as the input tsv files (to use instead of ref or dict)\n\nThis script takes as input the output of a number of \"samtools depth\" runs and calculates the number of common nucleotide positions at n= (max-min)/by depths in a range [min,max].\n";
+#else
     long MAX_IT=4000000000;
     const char usage[542]="Usage: combdepth (-f|--ref reference_genome.fa | -d|--dict reference_genome.dict | -c|--list chrlist.tsv) -o|--output outputfile [options] inputsample1.tsv [inputsample2.tsv ... inputtsamplen.tsv]\n\nOptions: \n\t-l|--min min \n\t-r|--max max \n\t-b|--by by\n\t-c|--list list of chromosmes sorted in the same order as the input tsv files (to use instead of ref or dict)\n\nThis script takes as input the output of a number of \"samtools depth\" runs and calculates the number of common nucleotide positions at n= (max-min)/by depths in a range [min,max].\n";
-    
+#endif
     //General-usage variables
     long i=0;
     long j=0;
