@@ -36,10 +36,10 @@ int main(int argc, const char * argv[]) {
 #ifdef DEBUG
     long MAX_IT=4000000;
     printf("\n\nWARNING: This is the debug version of combdepth. The maximum number of iteractions has been reduced to %ld, the output will be more verbose than needed for regular use and some other undesired behaviours may happen. Please, use the release version of this program.\n\n",MAX_IT);
-    const char usage[542]="Usage: combdepth (-f|--ref reference_genome.fa | -d|--dict reference_genome.dict | -c|--list chrlist.tsv) -o|--output outputfile [options] inputsample1.tsv [inputsample2.tsv ... inputtsamplen.tsv]\n\nOptions: \n\t-l|--min min \n\t-r|--max max \n\t-b|--by by\n\t-c|--list list of chromosmes sorted in the same order as the input tsv files (to use instead of ref or dict)\n\nThis script takes as input the output of a number of \"samtools depth\" runs and calculates the number of common nucleotide positions at n= (max-min)/by depths in a range [min,max].\n";
+    const char usage[580]="Usage: combdepth (-f|--ref reference_genome.fa | -d|--dict reference_genome.dict | -c|--list chrlist.tsv) -o|--output output_prefix [options] inputsample1.tsv [inputsample2.tsv ... inputtsamplen.tsv]\n\nOptions: \n\t-l|--min min \n\t-r|--max max \n\t-b|--by by\n\t-t|--trace activates trace output\n\t-c|--list list of chromosmes sorted in the same order as the input tsv files (to use instead of ref or dict)\n\nThis script takes as input the output of a number of \"samtools depth\" runs and calculates the number of common nucleotide positions at n= (max-min)/by depths in a range [min,max].\n";
 #else
     long MAX_IT=4000000000;
-    const char usage[542]="Usage: combdepth (-f|--ref reference_genome.fa | -d|--dict reference_genome.dict | -c|--list chrlist.tsv) -o|--output outputfile [options] inputsample1.tsv [inputsample2.tsv ... inputtsamplen.tsv]\n\nOptions: \n\t-l|--min min \n\t-r|--max max \n\t-b|--by by\n\t-c|--list list of chromosmes sorted in the same order as the input tsv files (to use instead of ref or dict)\n\nThis script takes as input the output of a number of \"samtools depth\" runs and calculates the number of common nucleotide positions at n= (max-min)/by depths in a range [min,max].\n";
+    const char usage[580]="Usage: combdepth (-f|--ref reference_genome.fa | -d|--dict reference_genome.dict | -c|--list chrlist.tsv) -o|--output output_prefix [options] inputsample1.tsv [inputsample2.tsv ... inputtsamplen.tsv]\n\nOptions: \n\t-l|--min min \n\t-r|--max max \n\t-b|--by by\n\t-t|--trace activates trace output\n\t-c|--list list of chromosmes sorted in the same order as the input tsv files (to use instead of ref or dict)\n\nThis script takes as input the output of a number of \"samtools depth\" runs and calculates the number of common nucleotide positions at n= (max-min)/by depths in a range [min,max].\n";
 #endif
     //General-usage variables
     long i=0;
@@ -63,13 +63,15 @@ int main(int argc, const char * argv[]) {
     char **files;
     files=malloc(sizeof(char*)*WBITS);
     int n_allocatedfiles=WBITS;
-    char *outputfile="combdepth.csv"; //Default
+    char *outputprefix="combdepth";
+    char *outputfile=NULL;
     char *chrsfile=NULL;
     int chrtype=-1;
     int nfiles=0;
     int maxfilt=40;
     int minfilt=10;
     int byfilt=9;
+    int traces=0;
 
     while (1)
     {
@@ -84,11 +86,11 @@ int main(int argc, const char * argv[]) {
             {"ref", required_argument,  NULL,  'f'},
             {"dict", required_argument, NULL,  'd'},
             {"list", required_argument, NULL,  'c'},
-            //{"traces",  no_argument,    NULL, 't'},//TODO: pending to implement
+            {"traces", no_argument,    NULL, 't'},
             {0, 0, 0, 0}
         };
 
-        c = getopt_long (argc, argv, "hi:o:l:r:b:f:d:c:",
+        c = getopt_long (argc, argv, "hi:o:l:r:b:f:d:c:t",
                          long_options, &option_index);
         
         /* Detect the end of the options. */
@@ -104,8 +106,11 @@ int main(int argc, const char * argv[]) {
                 break;
 
             case 'o':
-                outputfile=malloc(sizeof(char)*(strlen(optarg)+1));
-                strcpy(outputfile,optarg);
+                outputprefix=malloc(sizeof(char)*(strlen(optarg)+1));
+                strcpy(outputprefix,optarg);
+                outputfile=malloc(sizeof(char)*strlen(optarg)+1+4);
+                strcpy(outputfile,outputprefix);
+                strcat(outputfile, ".csv");
                 break;
                 
             case 'l':
@@ -161,8 +166,9 @@ int main(int argc, const char * argv[]) {
                 chrtype=LIST;
                 break;
                 
-//            case 't': //TODO pending to implement
-//                break;
+            case 't':
+                traces=1;
+                break;
                 
             case ':':   /* missing option argument */
                 fprintf(stderr, "%s: option `-%c' requires an argument\n",
@@ -271,6 +277,7 @@ int main(int argc, const char * argv[]) {
     {
         printf("\n\t>=%d",filters[i]);
     }
+    printf("\n\nTrace output: %s\n",traces==1?"yes":"no");
     printf("\nOutput file: %s\n\n",outputfile);
 
     //Memory allocation and initialization
@@ -433,6 +440,45 @@ int main(int argc, const char * argv[]) {
     int npassthisfilter=0;
     long min=LONG_MAX;
     
+    // Trace variables
+    unsigned long long tdepth[nfilters];
+    long length[nfilters];
+    long ipos[nfilters];
+    
+    FILE **tracehandlers=malloc(sizeof(FILE*)*nfilters);
+    ndig=0;
+    j=filters[nfilters-1];
+    while(j != 0)
+    {
+        j /=10;
+        ++ndig;
+    }
+    
+    string=malloc(sizeof(char)*2);
+    sizestring=1;
+    
+    if(traces==1)
+    {
+        if(sizestring<strlen(outputfile)+1+11+ndig)
+        {
+            sizestring=strlen(outputfile)+1+11+ndig;
+            string=realloc(string, sizeof(char)*sizestring);
+        }
+        for(i=0;i<nfilters;++i)
+        {
+            sprintf(string,"%s.trace_%d.csv.gz",outputprefix,filters[i]);
+            tracehandlers[i]=smartfopen(string, "w");
+            fprintf(tracehandlers[i],"chrom\tchromStart\tchromEnd\tMDEPTH\n");
+            ipos[i]=-1;
+            length[i]=0;
+            tdepth[i]=0;
+#ifdef DEBUG
+            fflush(tracehandlers[i]);
+#endif
+        }
+    }
+    
+    
     while(stop < nfiles && i<MAX_IT)
     {
         do
@@ -449,6 +495,18 @@ int main(int argc, const char * argv[]) {
             }
             if(nvchrs==0)
             {
+                if(traces==1)
+                {
+                    for(j=0;j<nfilters;++j)
+                    {
+                        if(length[j]!=0)
+                        {
+                            fprintf(tracehandlers[j],"%s\t%ld\t%ld\t%f\n",chr,ipos[j],ipos[j]+length[j],tdepth[j]/(length[j]*nfiles*1.0));
+                            ipos[j]=-1;
+                            length[j]=0;
+                        }
+                    }
+                }
                 ++nchr;
                 chr=chrs[nchr];
             }
@@ -463,19 +521,9 @@ int main(int argc, const char * argv[]) {
         min=LONG_MAX;
         for(j=0; j<nfiles; ++j)
         {
-#ifdef DEBUG
-            printf("Sample %ld, chr %s, is chr %s and pos < %ld?",j, cchr[j],chr,min);
-#endif
             if(((chrmask & (1<<j)) != 0) && cpos[j]<min)
             {
                 min=cpos[j];
-#ifdef DEBUG
-                printf("\n\tYes, pos %ld, minpos %ld\n",cpos[j],min);
-            }
-            else
-            {
-                printf("\n\tNo, pos %ld, minpos %ld\n",cpos[j],min);
-#endif
             }
         }
         pos=min;
@@ -515,6 +563,30 @@ int main(int argc, const char * argv[]) {
             {
                 ++results[j][ifilt]; //Results for this position
             }
+            
+            if(traces==1 && npassthisfilter==nfiles)
+            {
+                if(ipos[ifilt]+length[ifilt]==pos)//continuing
+                {
+                    ++length[ifilt];
+                }
+                else //Reestart pos and length
+                {
+                    if(ipos[ifilt]>0)//Last finished in this CHR, so we need to print it. Otherwise, it has been printed in the chr change
+                    {
+                        fprintf(tracehandlers[ifilt],"%s\t%ld\t%ld\t%f\n",chr,ipos[ifilt],ipos[ifilt]+length[ifilt],tdepth[ifilt]/(length[ifilt]*nfiles*1.0));
+                    }
+
+                    tdepth[ifilt]=0;
+                    ipos[ifilt]=pos;
+                    length[ifilt]=1;
+                }
+
+                for(j=0;j<nfiles;++j)
+                {
+                    tdepth[ifilt]+=cdepth[j];
+                }
+            }
         }
 
         for(j=0;j<nfiles;++j)
@@ -547,6 +619,17 @@ int main(int argc, const char * argv[]) {
     if (i>=MAX_IT)
     {
         printf("ERROR: Maximum number of iteractions reached. This is not expected to happen and the output will be truncated. You can modify the variable MAX_IT in the source code to increase the number of iteractions, but it has been set so that a whole human genome can be parsed without any problems. Please, check that the input format is correct before performing the suggested modification in the source code\n");
+    }
+    
+    if(traces==1)
+    {
+        for(j=0;j<nfilters;++j)
+        {
+            if(length[j]!=0)
+            {
+                fprintf(tracehandlers[j],"%s\t%ld\t%ld\t%f\n",chr,ipos[j],ipos[j]+length[j],tdepth[j]/(length[j]*nfiles*1.0));
+            }
+        }
     }
     
     //Print results
@@ -613,6 +696,17 @@ int main(int argc, const char * argv[]) {
         }
     }
     fclose(ofilehand);
+    
+    if(traces==1)
+    {
+        if(traces==1)
+        {
+            for(i=0;i<nfilters;++i)
+            {
+                fclose(tracehandlers[i]);
+            }
+        }
+    }
     
     return 0;
 }
