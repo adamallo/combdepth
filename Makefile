@@ -1,8 +1,4 @@
-ifndef CC
-CC=gcc
-endif
-
-CFLAGS:= $(CFLAGS) -Wall
+##Global confs
 PERF=-O2
 DBG=-DDEBUG -O0
 OBJDIR=./out
@@ -10,14 +6,16 @@ SRCDIR=./src
 BINDIR=./bin
 EXECUTABLES=combdepth
 
-_OBJECTS=
-OBJECTS=$(patsubst %,$(OBJDIR)/%,$(_OBJECTS))
-_DBG_OBJECTS=
-DBG_OBJECTS=$(patsubst %,$(OBJDIR)/%,$(_DBG_OBJECTS))
+##No object files
+#_OBJECTS=
+#OBJECTS=$(patsubst %,$(OBJDIR)/%,$(_OBJECTS))
+#_DBG_OBJECTS=
+#DBG_OBJECTS=$(patsubst %,$(OBJDIR)/%,$(_DBG_OBJECTS))
 
 #Dynamic libraries
 C_LIBS= -lm #Allways dynamically linked
-D_LIBS= -lz
+_D_D_LIBS= -lz
+_L_D_LIBS= -lz -lbsd
 
 #Static libraries for MAC
 _S_LIBS= libz.a
@@ -25,14 +23,32 @@ LD_LIBRARY_PATH=/opt/local/lib
 MS_LIBS=$(patsubst %,$(LD_LIBRARY_PATH)/%,$(_S_LIBS)) #BSD's LD needs the full path
 
 #Static libraries for Linux
-LS_LIBS= -lz
+LS_LIBS= -lz -lbsd
 
-UNAME_S= $(shell uname -s)
-ifeq ($(UNAME_S),Darwin)
-LIBS= -Wl,-no_pie $(C_LIBS) $(MS_LIBS)
+##Detecting OS
+
+ifeq ($(OS),Windows_NT)
+	detected_OS := Windows
 else
-LIBS= -Wl,-Bstatic $(LS_LIBS) -Wl,-Bdynamic $(C_LIBS)
+	detected_OS := $(shell sh -c 'uname -s 2>/dev/null || echo not')
 endif
+
+##Getline requires XOPEN>=700, not needed in Mac
+CFLAGS:= $(CFLAGS) -Wall
+
+ifeq ($(detected_OS), Darwin)
+	LIBS:= -Wl,-no_pie $(C_LIBS) $(MS_LIBS)
+	D_LIBS:= $(_D_D_LIBS)
+endif
+
+ifeq ($(detected_OS), Linux)
+	CC=gcc
+	CFLAGS:= $(CFLAGS) -std=c99 -D_XOPEN_SOURCE=700
+	D_LIBS:= $(_L_D_LIBS)
+	LIBS:= -Wl,-Bstatic $(LS_LIBS) -Wl,-Bdynamic $(C_LIBS)
+endif
+
+##Rules
 
 $(BINDIR)/combdepth: $(SRCDIR)/main.c $(OBJECTS)
 	mkdir -p $(BINDIR)
@@ -53,12 +69,12 @@ $(BINDIR)/combdepth_static: $(SRCDIR)/main.c $(OBJECTS)
 .PHONY: clean
 .PHONY: all
 .PHONY: debug
+.PHONY: combdepth_debug
 .PHONY: static
-.PHONY: combdepth
 
 combdepth: $(BINDIR)/combdepth
-combdepth_debug: $(BINDIR)/combdepth_dbg
-combdepth_dbg: combdepth_debug
+combdepth_dbg: $(BINDIR)/combdepth_dbg
+combdepth_debug: combdepth_dbg
 combdepth_static: $(BINDIR)/combdepth_static
 static: combdepth_static
 debug: combdepth_dbg

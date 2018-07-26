@@ -6,7 +6,7 @@
 //  Copyright © 2018 diegoM. All rights reserved.
 //
 
-#include <stdio.h>
+#include <bsd/stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
@@ -27,10 +27,10 @@ int countsetbits(unsigned long long v);
 FILE *smartfopen(const char *path, const char *mode);
 
 //Main
-int main(int argc, const char * argv[]) {
+int main(int argc, char * const argv[]) {
     
     //Constants
-    const int WBITS=IMAX_BITS(ULONG_LONG_MAX);
+    const int WBITS=IMAX_BITS(ULLONG_MAX);
 
     //Conf variables
 #ifdef DEBUG
@@ -47,7 +47,6 @@ int main(int argc, const char * argv[]) {
     char *line=NULL;
     size_t lengthlineptr=0;
     char *string=malloc(sizeof(char)*2);
-    strcmp(string," ");
     size_t sizestring=1;
     size_t auxsize=0;
     
@@ -760,7 +759,7 @@ FILE *smartfopen(const char *path, const char *mode)
         return funopen(zfp,
                        (int(*)(void*,char*,int))gzread,
                        (int(*)(void*,const char*,int))gzwrite,
-                       (fpos_t(*)(void*,fpos_t,int))gzseek,
+                        (off_t(*)(void*,off_t,int))gzseek,
                        (int(*)(void*))gzclose);
     }
     else //otherwise
