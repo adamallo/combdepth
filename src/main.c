@@ -6,7 +6,11 @@
 //  Copyright © 2018 diegoM. All rights reserved.
 //
 
-#include <bsd/stdio.h>
+#ifdef LIBBSD
+	#include <bsd/stdio.h>
+#else
+	#include <stdio.h>
+#endif
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>

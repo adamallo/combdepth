@@ -43,7 +43,7 @@ endif
 
 ifeq ($(detected_OS), Linux)
 	CC=gcc
-	CFLAGS:= $(CFLAGS) -std=c99 -D_XOPEN_SOURCE=700
+	CFLAGS:= $(CFLAGS) -std=c99 -D_XOPEN_SOURCE=700 -DLIBBSD
 	D_LIBS:= $(_L_D_LIBS)
 	LIBS:= -Wl,-Bstatic $(LS_LIBS) -Wl,-Bdynamic $(C_LIBS)
 endif
