@@ -113,7 +113,7 @@ int main(int argc, char * const argv[]) {
             case 'o':
                 outputprefix=malloc(sizeof(char)*(strlen(optarg)+1));
                 strcpy(outputprefix,optarg);
-                outputfile=malloc(sizeof(char)*strlen(optarg)+1+4);
+                outputfile=malloc(sizeof(char)*(strlen(optarg)+1+4));
                 strcpy(outputfile,outputprefix);
                 strcat(outputfile, ".csv");
                 break;
@@ -199,7 +199,7 @@ int main(int argc, char * const argv[]) {
             {
                 files=realloc(files, sizeof(char*)*++n_allocatedfiles);
             }
-            files[nfiles]=malloc(sizeof(char)*strlen(argv[optind]));
+            files[nfiles]=malloc(sizeof(char)*(strlen(argv[optind])+1));
             strcpy(files[nfiles++], argv[optind++]);
         }
     }
@@ -535,7 +535,7 @@ int main(int argc, char * const argv[]) {
                         {
                             if(ilength[j][k]!=0)
                             {
-                                fprintf(indtracehandlers[j][j],"%s\t%ld\t%ld\t%f\n",chr,iipos[j][k],iipos[j][k]+ilength[j][k],itdepth[j][k]/(ilength[j][k]*1.0));
+                                fprintf(indtracehandlers[j][k],"%s\t%ld\t%ld\t%f\n",chr,iipos[j][k],iipos[j][k]+ilength[j][k],itdepth[j][k]/(ilength[j][k]*1.0));
                                 iipos[j][k]=-1;
                                 ilength[j][k]=0;
                             }
