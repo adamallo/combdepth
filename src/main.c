@@ -746,15 +746,15 @@ int main(int argc, char * const argv[]) {
     }
     fclose(ofilehand);
     
+
     if(traces==1)
     {
-        if(traces==1)
-        {
-            for(i=0;i<nfilters;++i)
-            {
-                fclose(tracehandlers[i]);
-            }
-        }
+        for(i=0;i<nfilters;++i)
+            fclose(tracehandlers[i]);
+        
+        for(j=0;j<nfiles;++j)
+            for(k=0;k<nfilters;++k)
+                fclose(indtracehandlers[j][k]);
     }
     
     return 0;
