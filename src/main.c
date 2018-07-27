@@ -29,6 +29,7 @@
 void printBits(size_t const size, void const * const ptr);
 int countsetbits(unsigned long long v);
 FILE *smartfopen(const char *path, const char *mode);
+int calcndigits(int n);
 
 //Main
 int main(int argc, char * const argv[]) {
@@ -37,6 +38,7 @@ int main(int argc, char * const argv[]) {
     const int WBITS=IMAX_BITS(ULLONG_MAX);
 
     //Conf variables
+//#undef DEBUG
 #ifdef DEBUG
     long MAX_IT=4000000;
     printf("\n\nWARNING: This is the debug version of combdepth. The maximum number of iteractions has been reduced to %ld, the output will be more verbose than needed for regular use and some other undesired behaviours may happen. Please, use the release version of this program.\n\n",MAX_IT);
@@ -380,16 +382,10 @@ int main(int argc, char * const argv[]) {
     }while(nchar!=-1);
     
     //Count number of digits of max_chr_size-1
-    int ndig=0;
-    j=MAX_CHR_SIZE-1;
-    while(j != 0)
-    {
-        j /=10;
-        ++ndig;
-    }
+    int ndigchrsize=calcndigits(MAX_CHR_SIZE-1);
     
-    format_sscanf=malloc(sizeof(char)*(ndig+12+1));
-    snprintf(format_sscanf, 10+ndig, "%%%ds\t%%ld\t%%d",MAX_CHR_SIZE-1);//This will be used multiple times to scan the data from the tsv files. We limit the size of the chr strings with this.
+    format_sscanf=malloc(sizeof(char)*(ndigchrsize+12+1));
+    snprintf(format_sscanf, 10+ndigchrsize, "%%%ds\t%%ld\t%%d",MAX_CHR_SIZE-1);//This will be used multiple times to scan the data from the tsv files. We limit the size of the chr strings with this.
     
     //Initializing memory where the current chr for each file will be stored, now that we know the maximum chr size
     for(i=0;i<nfiles;++i)
@@ -434,6 +430,7 @@ int main(int argc, char * const argv[]) {
     int stop=0;
     i=0;
     j=0;
+    int k=0;
     int nchr=0;
     int nvchrs=0;
     char *chr=chrs[nchr]; //
@@ -443,28 +440,39 @@ int main(int argc, char * const argv[]) {
     int npassthisfilter=0;
     long min=LONG_MAX;
     
-    // Trace variables
+    /// Trace variables
+    //All-files trace
     unsigned long long tdepth[nfilters];
     long length[nfilters];
     long ipos[nfilters];
-    
     FILE **tracehandlers=malloc(sizeof(FILE*)*nfilters);
-    ndig=0;
-    j=filters[nfilters-1];
-    while(j != 0)
-    {
-        j /=10;
-        ++ndig;
-    }
     
+    //By-file trace
+    unsigned long long **itdepth=malloc(sizeof(unsigned long long*)*nfiles);
+    long **ilength=malloc(sizeof(long*)*nfiles);
+    long **iipos=malloc(sizeof(long*)*nfiles);
+    FILE ***indtracehandlers=malloc(sizeof(FILE**)*nfiles); //[sample][filter]
+    for (i=0; i<nfiles;++i){
+        itdepth[i]=malloc(sizeof(unsigned long long)*nfilters);
+        ilength[i]=malloc(sizeof(long)*nfilters);
+        iipos[i]=malloc(sizeof(long)*nfilters);
+        indtracehandlers[i]=malloc(sizeof(FILE*)*nfilters);
+    }
+
+    //Estimation of number of digits needed for the filters
+    int ndigfilters=calcndigits(filters[nfilters-1]);
+    int ndigfiles=calcndigits(nfiles);
+    
+    //Temporary variable to store filenames of trace output files
     string=malloc(sizeof(char)*2);
     sizestring=1;
     
     if(traces==1)
     {
-        if(sizestring<strlen(outputfile)+1+11+ndig)
+        //Generation of output names and opening of filehandles
+        if(sizestring<strlen(outputprefix)+1+28+ndigfilters+ndigfiles)
         {
-            sizestring=strlen(outputfile)+1+11+ndig;
+            sizestring=strlen(outputprefix)+1+28+ndigfilters+ndigfiles;
             string=realloc(string, sizeof(char)*sizestring);
         }
         for(i=0;i<nfilters;++i)
@@ -472,12 +480,26 @@ int main(int argc, char * const argv[]) {
             sprintf(string,"%s.trace_%d.csv.gz",outputprefix,filters[i]);
             tracehandlers[i]=smartfopen(string, "w");
             fprintf(tracehandlers[i],"chrom\tchromStart\tchromEnd\tMDEPTH\n");
-            ipos[i]=-1;
-            length[i]=0;
-            tdepth[i]=0;
+            ipos[i]=-1; //Position for filter i
+            length[i]=0; //Cumulative length for this fragment in filter i
+            tdepth[i]=0; //Total depth for this fragment in filter i
 #ifdef DEBUG
             fflush(tracehandlers[i]);
 #endif
+        }
+        for(i=0;i<nfiles;++i)
+        {
+            for(j=0;j<nfilters;++j){
+                sprintf(string,"%s.trace_ifile_%ld_filter_%d.csv.gz",outputprefix,i,filters[j]);
+                indtracehandlers[i][j]=smartfopen(string,"w");
+                fprintf(indtracehandlers[i][j],"chrom\tchromStart\tchromEnd\tMDEPTH\n");
+                iipos[i][j]=-1;
+                ilength[i][j]=0;
+                itdepth[i][j]=0;
+#ifdef DEBUG
+                fflush(indtracehandlers[i][j]);
+#endif
+            }
         }
     }
     
@@ -486,31 +508,40 @@ int main(int argc, char * const argv[]) {
     {
         do
         {
-            chrmask=0;
-            nvchrs=0;
+            chrmask=0; //Files in this chromosome
+            nvchrs=0; //Number of files that are working in this chromosome
             for(j=0;j<nfiles;++j)
             {
-                if((unfinishedmask & (1<<j))!= 0 && strcmp(cchr[j],chr)==0)
+                if((unfinishedmask & (1<<j))!= 0 && strcmp(cchr[j],chr)==0) //This file is unfinished and in the proper chr
                 {
                     chrmask |= 1<<j;
                     ++nvchrs;
                 }
             }
-            if(nvchrs==0)
+            if(nvchrs==0) //State at the end of a chromosome
             {
-                if(traces==1)
+                if(traces==1) //We make sure to terminate all active fragments
                 {
                     for(j=0;j<nfilters;++j)
-                    {
                         if(length[j]!=0)
                         {
                             fprintf(tracehandlers[j],"%s\t%ld\t%ld\t%f\n",chr,ipos[j],ipos[j]+length[j],tdepth[j]/(length[j]*nfiles*1.0));
                             ipos[j]=-1;
                             length[j]=0;
                         }
-                    }
+                    
+                    for(j=0;j<nfiles;++j)
+                        for(k=0;k<nfilters;++k)
+                        {
+                            if(ilength[j][k]!=0)
+                            {
+                                fprintf(indtracehandlers[j][j],"%s\t%ld\t%ld\t%f\n",chr,iipos[j][k],iipos[j][k]+ilength[j][k],itdepth[j][k]/(ilength[j][k]*1.0));
+                                iipos[j][k]=-1;
+                                ilength[j][k]=0;
+                            }
+                        }
                 }
-                ++nchr;
+                ++nchr; //next chr
                 chr=chrs[nchr];
             }
             if(nchr>=nkchrs)
@@ -522,7 +553,7 @@ int main(int argc, char * const argv[]) {
         }while(nvchrs==0);
         
         min=LONG_MAX;
-        for(j=0; j<nfiles; ++j)
+        for(j=0; j<nfiles; ++j) //Calculating the min position among those files in the same chr
         {
             if(((chrmask & (1<<j)) != 0) && cpos[j]<min)
             {
@@ -533,7 +564,7 @@ int main(int argc, char * const argv[]) {
         posmask=0;
         for(j=0;j<nfiles;++j)
         {
-            if(((chrmask & (1<<j)) != 0) && cpos[j]==pos)
+            if(((chrmask & (1<<j)) != 0) && cpos[j]==pos) //Calculating which of the files in the same chr are in the min position
             {
                 posmask |= 1<<j;
             }
@@ -554,6 +585,26 @@ int main(int argc, char * const argv[]) {
                     if(cdepth[j]>=filters[ifilt]) //Depth comparison
                     {
                         ++npassthisfilter;
+                        if(traces==1)
+                        {
+                            if(iipos[j][ifilt]+ilength[j][ifilt]==pos)//continuing
+                            {
+                                ++ilength[j][ifilt];
+                            }
+                            else //Reestart pos and length
+                            {
+                                if(iipos[j][ifilt]>0)//Last finished in this CHR, so we need to print it. Otherwise, it has been printed in the chr change
+                                {
+                                    fprintf(indtracehandlers[j][ifilt],"%s\t%ld\t%ld\t%f\n",chr,iipos[j][ifilt],iipos[j][ifilt]+ilength[j][ifilt],itdepth[j][ifilt]/(ilength[j][ifilt]*1.0));
+                                }
+                                
+                                itdepth[j][ifilt]=0;
+                                iipos[j][ifilt]=pos;
+                                ilength[j][ifilt]=1;
+                            }
+                            
+                            itdepth[j][ifilt]+=cdepth[j];
+                        }
                     }
                     else
                     {
@@ -627,12 +678,13 @@ int main(int argc, char * const argv[]) {
     if(traces==1)
     {
         for(j=0;j<nfilters;++j)
-        {
             if(length[j]!=0)
-            {
                 fprintf(tracehandlers[j],"%s\t%ld\t%ld\t%f\n",chr,ipos[j],ipos[j]+length[j],tdepth[j]/(length[j]*nfiles*1.0));
-            }
-        }
+        
+        for(j=0;j<nfiles;++j)
+            for(k=0;k<nfilters;++k)
+                if(ilength[j][k]!=0)
+                    fprintf(indtracehandlers[j][k],"%s\t%ld\t%ld\t%f\n",chr,iipos[j][k],iipos[j][k]+ilength[j][k],itdepth[j][k]/(ilength[j][k]*1.0));
     }
     
     //Print results
@@ -641,7 +693,7 @@ int main(int argc, char * const argv[]) {
     char *header; //Getting
     char *filtname;
     j=0;
-    ndig=3;
+    int ndig=3;
     int newndig;
     int lenheader=1;
     int alloc_head_step=10;
@@ -654,13 +706,7 @@ int main(int argc, char * const argv[]) {
     
     for(i=0;i<nfilters;++i)
     {
-        newndig=0;
-        j=filters[i];
-        while(j != 0)
-        {
-            j /=10;
-            ++newndig;
-        }
+        newndig=calcndigits(filters[i]);
         
         if(newndig>ndig)
         {
@@ -772,5 +818,15 @@ FILE *smartfopen(const char *path, const char *mode)
     }
 
 
+}
+
+int calcndigits(int n){
+    int ndig=0;
+    while(n != 0)
+    {
+        n /=10;
+        ++ndig;
+    }
+    return ndig;
 }
 
